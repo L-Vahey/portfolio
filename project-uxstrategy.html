@@ -31,7 +31,7 @@
 </form>
 <script>
 (function () {
-  var SALT = 'Zr7AxKjeRnTiEAt/sOmtPw==', ITER = 600000, IV = '6JNoIrO8/fOePTsI', CT = '', PARTS = 1, STEM = 'project-uxstrategy', KEY = 'lv-key';
+  var SALT = '7oVkPnDc4swXC6VuISdmJA==', ITER = 600000, IV = 'j/6jsuM0h5jqW82q', CT = '', PARTS = 1, STEM = 'project-uxstrategy', KEY = 'lv-key';
   var bytes = function (s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
   var store = { get: function () { try { return sessionStorage.getItem(KEY); } catch (e) { return null; } },
                 set: function (v) { try { sessionStorage.setItem(KEY, v); } catch (e) {} },
@@ -42,7 +42,7 @@
     if (!PARTS) return Promise.resolve(bytes(CT));
     if (!ctPromise) {
       var reqs = [];
-      for (var i = 0; i < PARTS; i++) reqs.push(fetch(STEM + '.' + i + '.bin').then(function (r) { if (!r.ok) throw new Error('part'); return r.arrayBuffer(); }));
+      for (var i = 0; i < PARTS; i++) reqs.push(fetch(STEM + '.' + i + '.bin').then(function (r) { if (!r.ok) throw new Error('part'); return r.arrayBuffer(); }, function () { throw new Error('part'); }));
       ctPromise = Promise.all(reqs).then(function (bufs) {
         var n = 0; bufs.forEach(function (b) { n += b.byteLength; });
         var out = new Uint8Array(n), o = 0; bufs.forEach(function (b) { out.set(new Uint8Array(b), o); o += b.byteLength; });
@@ -83,9 +83,11 @@
         var b = new Uint8Array(raw), s = ''; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
         store.set(btoa(s)); show(html);
       });
-    }).catch(function () {
+    }).catch(function (x) {
       btn.disabled = false; btn.textContent = 'View portfolio';
-      err.textContent = 'That password isn’t right. Please try again.';
+      err.textContent = (x && x.message === 'part') || (PARTS && location.protocol === 'file:')
+        ? 'This page only opens on the live website, not from a downloaded copy.'
+        : 'That password isn’t right. Please try again.';
     });
   });
 })();
