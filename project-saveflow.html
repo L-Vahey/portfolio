@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Portfolio</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; }
+  body { display: flex; align-items: center; justify-content: center; font-family: 'Inter Tight', system-ui, -apple-system, sans-serif; color: #1F1F1F; }
+  #gate { width: min(360px, 86vw); visibility: hidden; }
+  #gate.show { visibility: visible; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #C6F432; margin-right: 10px; vertical-align: 1px; }
+  h1 { font-size: 1.15rem; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 1.5rem; }
+  label { display: block; font-size: 0.8rem; color: #6B6B6B; margin-bottom: 0.5rem; }
+  input { width: 100%; box-sizing: border-box; font: inherit; font-size: 1rem; padding: 0.8rem 1rem; border: 1px solid #DADADA; border-radius: 10px; outline: none; }
+  input:focus { border-color: #1F1F1F; }
+  button { margin-top: 0.9rem; width: 100%; font: inherit; font-size: 0.95rem; padding: 0.8rem 1rem; border: 0; border-radius: 999px; background: #EDEDED; color: #1F1F1F; cursor: pointer; }
+  button:hover { background: #E2E2E2; }
+  button[disabled] { opacity: .6; cursor: default; }
+  .err { color: #B42318; font-size: 0.85rem; min-height: 1.2em; margin-top: 0.7rem; }
+</style>
+</head>
+<body>
+<form id="gate" autocomplete="off">
+  <h1><span class="dot"></span>This portfolio is password protected</h1>
+  <label for="pw">Password</label>
+  <input id="pw" type="password" autocomplete="current-password" autofocus required>
+  <button id="go" type="submit">View portfolio</button>
+  <p class="err" id="err" role="alert"></p>
+</form>
+<script>
+(function () {
+  var SALT = 'Zr7AxKjeRnTiEAt/sOmtPw==', ITER = 600000, IV = 'Vnn3RlixN9J5uFmM', CT = '', PARTS = 2, STEM = 'project-saveflow', KEY = 'lv-key';
+  var bytes = function (s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  var store = { get: function () { try { return sessionStorage.getItem(KEY); } catch (e) { return null; } },
+                set: function (v) { try { sessionStorage.setItem(KEY, v); } catch (e) {} },
+                del: function () { try { sessionStorage.removeItem(KEY); } catch (e) {} } };
+  /* big pages keep their encrypted content in separate .bin parts (GitHub's web upload can't take very large files) */
+  var ctPromise = null;
+  function getCT() {
+    if (!PARTS) return Promise.resolve(bytes(CT));
+    if (!ctPromise) {
+      var reqs = [];
+      for (var i = 0; i < PARTS; i++) reqs.push(fetch(STEM + '.' + i + '.bin').then(function (r) { if (!r.ok) throw new Error('part'); return r.arrayBuffer(); }));
+      ctPromise = Promise.all(reqs).then(function (bufs) {
+        var n = 0; bufs.forEach(function (b) { n += b.byteLength; });
+        var out = new Uint8Array(n), o = 0; bufs.forEach(function (b) { out.set(new Uint8Array(b), o); o += b.byteLength; });
+        return out;
+      });
+    }
+    return ctPromise;
+  }
+  function decrypt(raw) {
+    return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt'])
+      .then(function (k) { return getCT().then(function (ct) { return crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes(IV) }, k, ct); }); })
+      .then(function (buf) { return new TextDecoder().decode(buf); });
+  }
+  function show(html) {
+    // Swap the gate for the real page once this wrapper has fully loaded (document.open is ignored mid-load).
+    var swap = function () {
+      document.open(); document.write(html); document.close();
+      if (location.hash) setTimeout(function () { var t = document.getElementById(location.hash.slice(1)); if (t) t.scrollIntoView(); }, 400);
+    };
+    if (document.readyState === 'complete') setTimeout(swap, 0);
+    else window.addEventListener('load', function () { setTimeout(swap, 0); });
+  }
+  function derive(pw) {
+    return crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits'])
+      .then(function (k) { return crypto.subtle.deriveBits({ name: 'PBKDF2', salt: bytes(SALT), iterations: ITER, hash: 'SHA-256' }, k, 256); });
+  }
+  var gate = document.getElementById('gate');
+  var saved = store.get();
+  if (saved) decrypt(bytes(saved)).then(show, function () { store.del(); gate.classList.add('show'); });
+  else gate.classList.add('show');
+  gate.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pw = document.getElementById('pw').value.trim().toLowerCase().replace(/\s*-\s*/g, '-').replace(/\s+/g, '-');
+    var btn = document.getElementById('go'), err = document.getElementById('err');
+    btn.disabled = true; btn.textContent = 'Opening…'; err.textContent = '';
+    derive(pw).then(function (raw) {
+      return decrypt(raw).then(function (html) {
+        var b = new Uint8Array(raw), s = ''; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+        store.set(btoa(s)); show(html);
+      });
+    }).catch(function () {
+      btn.disabled = false; btn.textContent = 'View portfolio';
+      err.textContent = 'That password isn’t right. Please try again.';
+    });
+  });
+})();
+</script>
+</body>
+</html>
